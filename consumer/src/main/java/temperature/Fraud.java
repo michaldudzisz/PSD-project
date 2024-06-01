@@ -15,8 +15,8 @@ public class Alarm {
         this.temperature = temperature;
     }
 
-    public static Alarm fromMeasurement(Measurement measurement) {
-        return new Alarm(measurement.timestamp, measurement.temperature);
+    public static Alarm fromMeasurement(Transaction transaction) {
+        return new Alarm(transaction.timestamp, transaction.temperature);
     }
 
     public LocalDateTime getAtTime() {
