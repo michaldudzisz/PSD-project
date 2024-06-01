@@ -3,13 +3,15 @@ import json
 import pandas as pd
 
 
-def erase_file(csv_file):
-    open(csv_file, 'w').close()
+def prepare_file(csv_file):
+    header = "cardId,timestamp,value,userId,limit,localization.latitude,localization.longitude"
+    with open(csv_file, 'w') as f:
+        f.write(header + '\n')
 
 
 def process_and_save_to_csv(messages, csv_file):
     df = pd.DataFrame(messages)
-    df.to_csv(csv_file, index=False, mode='a')
+    df.to_csv(csv_file, index=False, header=False, mode='a')
 
 
 def flatten_json(json_object):
@@ -43,7 +45,7 @@ consumer = KafkaConsumer(
 
 if __name__ == '__main__':
     csv_file = 'transactions.csv'
-    erase_file(csv_file)
+    prepare_file(csv_file)
     messages = []
     print("Listening to Kafka topic 'Transactions'...")
     try:

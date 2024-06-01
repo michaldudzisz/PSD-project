@@ -97,6 +97,17 @@ def generate_transaction_above_limit_anomaly(cards, time: datetime, user_id: int
         return None
 
 
+def generate_low_value_anomaly(cards, time, card_id: int):
+    probability = probability_of_anomaly(counts_in_hour=0.5)
+    randed = uniform(0, 1)
+    if randed < probability:
+        transaction = generate_transaction(cards, card_id=card_id, time=time)
+        transaction.value = round(uniform(0, 0.5), 2)
+        print(transaction.value)
+        return transaction
+    else:
+        return None
+
 def generate_anomalies(transaction):
     anomaly_type = choice(['high_value'])  # , 'localization_change'
     if anomaly_type == 'high_value':
@@ -111,18 +122,23 @@ def time_str(str: str) -> datetime:
     return datetime.strptime(str, '%Y-%m-%d %H:%M:%S')
 
 
-def generate_transaction(cards, time: datetime, user_id: int = None):
-    # if user is not specified, picks random card id
-    # if user is specified, picks random of his cards
-    if user_id is None:
-        card_id = choice(list(cards.keys()))
-    else:
+def generate_transaction(cards, time: datetime, user_id: int = None, card_id: int = None):
+    if user_id is not None and card_id is not None:
+        raise RuntimeError("You should specify at most one of user id or card id")
+
+    if user_id is not None:
         user_cards = []
         for card_id, card_info in cards.items():
             if card_info['user_id'] == user_id:
                 user_cards.append(card_id)
         print("user_cards: " + str(user_cards))
         card_id = choice(user_cards)
+
+    if card_id is not None:
+        card_id = card_id
+
+    if user_id is None and card_id is None:
+        card_id = choice(list(cards.keys()))
 
     card = cards[card_id]
     user_id = card['user_id']
@@ -157,7 +173,9 @@ if __name__ == '__main__':
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_transaction_above_limit_anomaly(cards=cards, time=now, user_id=100)
             anomalies.append(anomaly)
-
+        if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
+            anomaly = generate_low_value_anomaly(cards=cards, time=now, card_id=101)
+            anomalies.append(anomaly)
         anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
         transactions = [transaction] + anomalies
         for transaction in transactions:
