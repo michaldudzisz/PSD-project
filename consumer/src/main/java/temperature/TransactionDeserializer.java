@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 
-public class MeasurementDeserializer implements DeserializationSchema<Transaction> {
+public class TransactionDeserializer implements DeserializationSchema<Transaction> {
 
     private static final ObjectMapper objectMapper = JsonMapper.builder()
             .addModule(new ParameterNamesModule())

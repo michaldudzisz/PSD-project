@@ -1,37 +1,54 @@
 package temperature;
 
-import java.time.LocalDateTime;
+import java.util.Objects;
 
-public class Alarm {
+public class Fraud {
 
-    public LocalDateTime atTime;
+    public Transaction transaction;
 
-    public float temperature;
+    public String fraudReason;
 
-    public Alarm() {}
+    public Fraud() {}
 
-    public Alarm(LocalDateTime atTime, float temperature) {
-        this.atTime = atTime;
-        this.temperature = temperature;
+    public Fraud(Transaction transaction, String fraudReason) {
+        this.transaction = transaction;
+        this.fraudReason = fraudReason;
     }
 
-    public static Alarm fromMeasurement(Transaction transaction) {
-        return new Alarm(transaction.timestamp, transaction.temperature);
+    public Transaction getTransaction() {
+        return transaction;
     }
 
-    public LocalDateTime getAtTime() {
-        return atTime;
+    public void setTransaction(Transaction transaction) {
+        this.transaction = transaction;
     }
 
-    public void setAtTime(LocalDateTime atTime) {
-        this.atTime = atTime;
+    public String getFraudReason() {
+        return fraudReason;
     }
 
-    public float getTemperature() {
-        return temperature;
+    public void setFraudReason(String fraudReason) {
+        this.fraudReason = fraudReason;
     }
 
-    public void setTemperature(float temperature) {
-        this.temperature = temperature;
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Fraud fraud = (Fraud) o;
+        return Objects.equals(transaction, fraud.transaction) && Objects.equals(fraudReason, fraud.fraudReason);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(transaction, fraudReason);
+    }
+
+    @Override
+    public String toString() {
+        return "Fraud{" +
+                "transaction=" + transaction +
+                ", fraudReason='" + fraudReason + '\'' +
+                '}';
     }
 }

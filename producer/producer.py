@@ -3,7 +3,6 @@ from random import randint, uniform, choice
 from datetime import datetime
 import json
 import time
-import numpy as np
 from dataclasses import dataclass
 
 
@@ -27,9 +26,9 @@ class Transaction:
             'localization': {
                 'latitude': self.latitude,
                 'longitude': self.longitude,
-        },
-    }
-    
+            },
+        }
+
 
 def kafka_producer():
     return KafkaProducer(
@@ -46,7 +45,7 @@ def generate_cards():
         user_id = choice(user_ids)
         limit = randint(500, 2001)
         latitude, longitude = generate_original_localization()
-        cards[card_id] = {"user_id" : user_id, "limit" : limit, "latitude": latitude, "longitude": longitude}
+        cards[card_id] = {"user_id": user_id, "limit": limit, "latitude": latitude, "longitude": longitude}
     return cards
 
 
@@ -67,11 +66,12 @@ def generate_transaction_value():
 
 
 def generate_anomalies(transaction):
-    anomaly_type = choice(['high_value', 'localization_change'])
+    anomaly_type = choice(['high_value']) # , 'localization_change'
     if anomaly_type == 'high_value':
-        transaction.value = uniform(transaction.limit,  transaction.limit+100)
+        transaction.value = uniform(transaction.limit, transaction.limit + 100)
     elif anomaly_type == 'localization_change':
-        transaction.latitude = transaction.latitude + uniform(1, 50)  #teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
+        transaction.latitude = transaction.latitude + uniform(1,
+                                                              50)  # teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
         transaction.longitude = transaction.longitude + uniform(1, 50)
     # return
 
@@ -97,15 +97,15 @@ def generate_transaction(cards):
 
 if __name__ == '__main__':
     producer = kafka_producer()
-    topic = 'Transactins'
+    topic = 'Transactions'
 
     cards = generate_cards()
     for i in range(1, 10):
         transaction = generate_transaction(cards)
-        if True: # randint(1, 10) > 8:
+        if True:  # randint(1, 10) > 8:
             generate_anomalies(transaction)
         print(f'transaction: {transaction.json()}')
-        producer.send(topic, value=transaction)
+        producer.send(topic, value=transaction.json())
         time.sleep(1)
 
     producer.flush()

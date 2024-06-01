@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 
-public class AlarmSerializer implements SerializationSchema<Fraud> {
+public class FraudSerializer implements SerializationSchema<Fraud> {
     private static final ObjectMapper objectMapper = JsonMapper.builder()
             .addModule(new ParameterNamesModule())
             .addModule(new Jdk8Module())
