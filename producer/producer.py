@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import json
 from dataclasses import dataclass
 import time
+from math import radians, sin, cos, sqrt, atan2, degrees, asin
 
 
 @dataclass
@@ -48,16 +49,24 @@ def kafka_producer():
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
 
+def generate_users():
+    '''each user has a home localization'''
+    user_ids = list(range(1, 7001))
+    users = {}
+    for user_id in user_ids:
+        latitude, longitude = generate_original_localization()
+        users[user_id] = {"latitude": latitude, "longitude": longitude}
+    return users
 
-def generate_cards():
-    card_ids = list(range(1, 10_001))
-    # 10 000 elements, at first from 1 to 7000, then from 1 to 3000:
-    user_ids = iter(list(range(1, 7_001)) + list(range(1, 3_001)))
+def generate_cards(users):
+    '''each card has a user and localization of home address'''
+    card_ids = list(range(1, 10001))
+    user_ids = list(range(1, 7001))
     cards = {}
     for card_id in card_ids:
-        user_id = next(user_ids)
+        user_id = choice(user_ids)
         limit = randint(500, 2001)
-        latitude, longitude = generate_original_localization()
+        latitude, longitude = users[user_id]["latitude"], users[user_id]["longitude"]
         cards[card_id] = {"user_id": user_id, "limit": limit, "latitude": latitude, "longitude": longitude}
     return cards
 
@@ -68,9 +77,21 @@ def generate_original_localization():
     return latitude, longitude
 
 
-def generate_nearby_localization(latitude, longitude, max_offset=0.1):
-    new_latitude = latitude + uniform(-max_offset, max_offset)
-    new_longitude = longitude + uniform(-max_offset, max_offset)
+def generate_nearby_localization(latitude, longitude, max_distance_km = 15):
+    earth_radius_km = 6371.0
+    max_distance_rad = max_distance_km / earth_radius_km
+    bearing = uniform(0, 360)
+    bearing_rad = radians(bearing)
+
+    lat_rad = radians(latitude)
+    lon_rad = radians(longitude)
+
+    new_lat_rad = asin(sin(lat_rad) * cos(max_distance_rad) +
+                       cos(lat_rad) * sin(max_distance_rad) * cos(bearing_rad))
+    new_lon_rad = lon_rad + atan2(sin(bearing_rad) * sin(max_distance_rad) * cos(lat_rad),
+                                  cos(max_distance_rad) - sin(lat_rad) * sin(new_lat_rad))
+    new_latitude = degrees(new_lat_rad)
+    new_longitude = degrees(new_lon_rad)
     return new_latitude, new_longitude
 
 
@@ -85,7 +106,7 @@ def probability_of_anomaly(counts_in_hour: float) -> float:
     return probability
 
 
-def generate_transaction_above_limit_anomaly(cards, time: datetime, user_id: int) -> Transaction | None:
+def generate_transaction_above_limit_anomaly(cards, time: datetime, user_id: int):
     probability = probability_of_anomaly(counts_in_hour=0.3)
     randed = uniform(0, 1)
     if randed < probability:
@@ -108,14 +129,46 @@ def generate_low_value_anomaly(cards, time, card_id: int):
     else:
         return None
 
-def generate_anomalies(transaction):
-    anomaly_type = choice(['high_value'])  # , 'localization_change'
-    if anomaly_type == 'high_value':
-        transaction.value = uniform(transaction.limit, transaction.limit + 100)
-    elif anomaly_type == 'localization_change':
-        transaction.latitude = transaction.latitude + uniform(1,
-                                                              50)  # teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
-        transaction.longitude = transaction.longitude + uniform(1, 50)
+
+def generate_anomaly_localization(latitude, longitude, min_distance_km=100):
+    earth_radius_km = 6371.0
+    min_distance_rad = min_distance_km / earth_radius_km
+    bearing = uniform(0, 360)
+    bearing_rad = radians(bearing)
+
+    lat_rad = radians(latitude)
+    lon_rad = radians(longitude)
+
+    new_lat_rad = asin(sin(lat_rad) * cos(min_distance_rad) +
+                       cos(lat_rad) * sin(min_distance_rad) * cos(bearing_rad))
+    new_lon_rad = lon_rad + atan2(sin(bearing_rad) * sin(min_distance_rad) * cos(lat_rad),
+                                  cos(min_distance_rad) - sin(lat_rad) * sin(new_lat_rad))
+
+    new_latitude = degrees(new_lat_rad)
+    new_longitude = degrees(new_lon_rad)
+    return new_latitude, new_longitude
+
+
+def generate_transaction_localization_change_anomaly(cards, time: datetime):
+    probability = probability_of_anomaly(counts_in_hour=0.2)
+    if uniform(0, 100) > probability:
+        transaction = generate_transaction(cards, time)
+        new_latitude, new_longitude = generate_anomaly_localization(transaction.latitude, transaction.longitude)
+        transaction.latitude = new_latitude
+        transaction.longitude = new_longitude
+        return transaction
+    else:
+        return None
+
+
+# def generate_anomalies(transaction):
+#     anomaly_type = choice(['high_value'])  # , 'localization_change'
+#     if anomaly_type == 'high_value':
+#         transaction.value = uniform(transaction.limit, transaction.limit + 100)
+#     elif anomaly_type == 'localization_change':
+#         transaction.latitude = transaction.latitude + uniform(1,
+#                                                               50)  # teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
+#         transaction.longitude = transaction.longitude + uniform(1, 50)
 
 
 def time_str(str: str) -> datetime:
@@ -175,6 +228,9 @@ if __name__ == '__main__':
             anomalies.append(anomaly)
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_low_value_anomaly(cards=cards, time=now, card_id=101)
+            anomalies.append(anomaly)
+        if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
+            anomaly = generate_transaction_localization_change_anomaly(cards=cards, time=now)
             anomalies.append(anomaly)
         anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
         transactions = [transaction] + anomalies
