@@ -80,16 +80,20 @@ def generate_transaction_value():
     return round(float_value, 2)
 
 
-def probability_of_anomaly(counts_in_hour: int) -> float:
-    probability_of_anomaly = 1 / (24 * 60 * 60 / LOOP_VIRTUAL_INTERVAL)
-    return 1.0
+def probability_of_anomaly(counts_in_hour: float) -> float:
+    probability = counts_in_hour / (24 * 60 * 60 / LOOP_VIRTUAL_INTERVAL)
+    return probability
 
 
 def generate_transaction_above_limit_anomaly(cards, time: datetime) -> Transaction | None:
-    # probability_of_anomaly = 1 / (24 * 60 * 60 / LOOP_VIRTUAL_INTERVAL)
-    transaction = generate_transaction(cards, time)
-    transaction.value = uniform(transaction.limit, transaction.limit + 100)
-    return None
+    probability = probability_of_anomaly(counts_in_hour=0.2)
+    if uniform(0, 100) > probability:
+        transaction = generate_transaction(cards, time)
+        limit = transaction.limit
+        transaction.value = round(uniform(limit, 2 * limit), 2)
+        return transaction
+    else:
+        return None
 
 
 def generate_anomalies(transaction):
@@ -137,15 +141,18 @@ if __name__ == '__main__':
     speedup_factor = 60 * 24  # now one real minute is one virtual day
     time_provider = FastForwardTime(start_time=start_datetime, speedup_factor=speedup_factor)
     cards = generate_cards()
-    for i in range(1, 20):
+    for i in range(1, 10):
         now = time_provider.get_current_time()
         transaction = generate_transaction(cards, time=now)
         anomalies = []
-        if time_str("2024-06-01 08:00:00") <= now <= time_str("2024-06-01 10:00:00"):
+        if time_str("2024-06-01 08:00:00") <= now <= time_str("2024-06-02 08:00:00"):
             anomaly = generate_transaction_above_limit_anomaly(cards=cards, time=now)
             anomalies.append(anomaly)
 
-        print(f'transaction: {transaction.json()}')
+        anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
+        transactions = [transaction] + anomalies
+        for transaction in transactions:
+            print(f'transaction: {transaction.json()}')
         # producer.send(topic, value=transaction.json(), timestamp_ms=now.timestamp())
         time.sleep(LOOP_REAL_INTERVAL)
     #
