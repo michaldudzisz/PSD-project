@@ -41,7 +41,7 @@ public class TemperatureConsumerJob {
 
         DataStream<List<Fraud>> stream = dataStream
                 .keyBy(Transaction::getUserId)
-                .window(SlidingEventTimeWindows.of(Duration.ofSeconds(90), Duration.ofSeconds(30)))
+                .window(SlidingEventTimeWindows.of(Duration.ofHours(24), Duration.ofMinutes(30)))
                 .aggregate(new ValueAboveLimitDetector());
 
         stream.print();
