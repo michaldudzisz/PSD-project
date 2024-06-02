@@ -49,24 +49,15 @@ def kafka_producer():
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
 
-def generate_users():
-    '''each user has a home localization'''
-    user_ids = list(range(1, 7001))
-    users = {}
-    for user_id in user_ids:
-        latitude, longitude = generate_original_localization()
-        users[user_id] = {"latitude": latitude, "longitude": longitude}
-    return users
-
-def generate_cards(users):
-    '''each card has a user and localization of home address'''
-    card_ids = list(range(1, 10001))
-    user_ids = list(range(1, 7001))
+def generate_cards():
+    card_ids = list(range(1, 10_001))
+    # 10 000 elements, at first from 1 to 7000, then from 1 to 3000:
+    user_ids = iter(list(range(1, 7_001)) + list(range(1, 3_001)))
     cards = {}
     for card_id in card_ids:
-        user_id = choice(user_ids)
+        user_id = next(user_ids)
         limit = randint(500, 2001)
-        latitude, longitude = users[user_id]["latitude"], users[user_id]["longitude"]
+        latitude, longitude = generate_original_localization()
         cards[card_id] = {"user_id": user_id, "limit": limit, "latitude": latitude, "longitude": longitude}
     return cards
 
@@ -80,16 +71,20 @@ def generate_original_localization():
 def generate_nearby_localization(latitude, longitude, max_distance_km = 15):
     earth_radius_km = 6371.0
     max_distance_rad = max_distance_km / earth_radius_km
+
+    # Random distance with uniform distribution over the area
+    random_distance_rad = sqrt(uniform(0, max_distance_rad ** 2))
+
     bearing = uniform(0, 360)
     bearing_rad = radians(bearing)
 
     lat_rad = radians(latitude)
     lon_rad = radians(longitude)
 
-    new_lat_rad = asin(sin(lat_rad) * cos(max_distance_rad) +
-                       cos(lat_rad) * sin(max_distance_rad) * cos(bearing_rad))
-    new_lon_rad = lon_rad + atan2(sin(bearing_rad) * sin(max_distance_rad) * cos(lat_rad),
-                                  cos(max_distance_rad) - sin(lat_rad) * sin(new_lat_rad))
+    new_lat_rad = asin(sin(lat_rad) * cos(random_distance_rad) +
+                       cos(lat_rad) * sin(random_distance_rad) * cos(bearing_rad))
+    new_lon_rad = lon_rad + atan2(sin(bearing_rad) * sin(random_distance_rad) * cos(lat_rad),
+                                  cos(random_distance_rad) - sin(lat_rad) * sin(new_lat_rad))
     new_latitude = degrees(new_lat_rad)
     new_longitude = degrees(new_lon_rad)
     return new_latitude, new_longitude
@@ -149,10 +144,11 @@ def generate_anomaly_localization(latitude, longitude, min_distance_km=100):
     return new_latitude, new_longitude
 
 
-def generate_transaction_localization_change_anomaly(cards, time: datetime):
+def generate_transaction_localization_change_anomaly(cards, time: datetime, user_id: int):
+    randed = uniform(0, 1)
     probability = probability_of_anomaly(counts_in_hour=0.2)
-    if uniform(0, 100) > probability:
-        transaction = generate_transaction(cards, time)
+    if randed < probability:
+        transaction = generate_transaction(cards, time, user_id=user_id)
         new_latitude, new_longitude = generate_anomaly_localization(transaction.latitude, transaction.longitude)
         transaction.latitude = new_latitude
         transaction.longitude = new_longitude
@@ -213,31 +209,37 @@ def generate_transaction(cards, time: datetime, user_id: int = None, card_id: in
 LOOP_VIRTUAL_INTERVAL = 3  # one main loop cycle every 3 virtual seconds
 
 if __name__ == '__main__':
-    producer = kafka_producer()
-    topic = 'Transactions'
+    # producer = kafka_producer()
+    # topic = 'Transactions'
     start_datetime = time_str("2024-06-01 08:00:00")
     time_provider = FastForwardTime(start_time=start_datetime)
+    # users = generate_users()
     cards = generate_cards()
     now = time_provider.get_current_time()
-    while now < time_str("2024-06-07 16:00:00"):
+    while now < time_str("2024-06-06 16:00:00"):
         now = time_provider.get_current_time()
         transaction = generate_transaction(cards, time=now)
         anomalies = []
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_transaction_above_limit_anomaly(cards=cards, time=now, user_id=100)
+            if anomaly:
+                print(f'Above limit anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_low_value_anomaly(cards=cards, time=now, card_id=101)
             anomalies.append(anomaly)
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
-            anomaly = generate_transaction_localization_change_anomaly(cards=cards, time=now)
+            anomaly = generate_transaction_localization_change_anomaly(cards=cards, time=now, user_id=102)
+            if anomaly:
+                print(f'Localization change anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
         anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
         transactions = [transaction] + anomalies
-        for transaction in transactions:
-            # print(f'transaction: {transaction.json()}')
-            producer.send(topic, value=transaction.json(), timestamp_ms=int(now.timestamp()))
+        # for transaction in transactions:
+        #     print(f'transaction: {transaction.json()}')
+            # producer.send(topic, value=transaction.json(), timestamp_ms=int(now.timestamp()))
         time_provider.tick_by(LOOP_VIRTUAL_INTERVAL)
 
-    producer.flush()
-    producer.close()
+    # producer.flush()
+    # producer.close()
+
