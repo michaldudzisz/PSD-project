@@ -1,4 +1,4 @@
-package temperature;
+package transaction.dto;
 
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;

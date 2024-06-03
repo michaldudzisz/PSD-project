@@ -157,16 +157,6 @@ def generate_transaction_localization_change_anomaly(cards, time: datetime, user
         return None
 
 
-# def generate_anomalies(transaction):
-#     anomaly_type = choice(['high_value'])  # , 'localization_change'
-#     if anomaly_type == 'high_value':
-#         transaction.value = uniform(transaction.limit, transaction.limit + 100)
-#     elif anomaly_type == 'localization_change':
-#         transaction.latitude = transaction.latitude + uniform(1,
-#                                                               50)  # teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
-#         transaction.longitude = transaction.longitude + uniform(1, 50)
-
-
 def time_str(str: str) -> datetime:
     return datetime.strptime(str, '%Y-%m-%d %H:%M:%S')
 

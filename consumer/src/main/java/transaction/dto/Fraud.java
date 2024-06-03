@@ -1,4 +1,4 @@
-package temperature;
+package transaction.dto;
 
 import java.util.Objects;
 

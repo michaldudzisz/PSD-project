@@ -8,18 +8,26 @@ import org.apache.flink.util.Collector;
 import transaction.dto.Fraud;
 import transaction.dto.Transaction;
 
+import java.math.BigDecimal;
 import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class ValueAboveLimitDetector implements AggregateFunction<Transaction, List<Transaction>, List<Fraud>> {
+import static java.util.Comparator.*;
 
-    public static DataStream<Fraud> valueAboveLimitDetector(DataStream<Transaction> dataStream) {
-        return dataStream.keyBy(Transaction::getUserId)
-                .window(SlidingEventTimeWindows.of(Duration.ofHours(24), Duration.ofMinutes(30)))
-                .aggregate(new ValueAboveLimitDetector())
+public class LowValuesDetector implements AggregateFunction<Transaction, List<Transaction>, List<Fraud>> {
+
+    private static final BigDecimal minimalValue = BigDecimal.valueOf(1.0);
+
+    private static final Duration windowLength = Duration.ofHours(7 * 24);          // 7 days
+    private static final Duration windowSlide = Duration.ofHours((int) (3.5 * 24)); // 3.5 days
+
+    public static DataStream<Fraud> lowValuesDetector(DataStream<Transaction> dataStream) {
+        return dataStream.keyBy(Transaction::getCardId)
+                .window(SlidingEventTimeWindows.of(windowLength, windowSlide))
+                .aggregate(new LowValuesDetector())
                 .flatMap((List<Fraud> frauds, Collector<Fraud> out) -> frauds.forEach(out::collect))
                 .returns(TypeInformation.of(Fraud.class));
     }
@@ -31,21 +39,30 @@ public class ValueAboveLimitDetector implements AggregateFunction<Transaction, L
 
     @Override
     public List<Transaction> add(Transaction transaction, List<Transaction> accumulator) {
-        System.out.println("Wondering if add transaction: " + transaction);
-        if (transaction.isAboveLimit()) {
-            System.out.println("Adding transaction: " + transaction);
-            accumulator.add(transaction);
-        }
+        accumulator.add(transaction);
         return accumulator;
     }
 
     @Override
     public List<Fraud> getResult(List<Transaction> accumulator) {
-        System.out.println("Asked for results, current results: " + accumulator);
-        return accumulator.stream()
-                .filter(transaction -> Duration.between(transaction.getTimestamp(), LocalDateTime.now()).compareTo(Duration.ofSeconds(30)) <= 0)
-                .map(transaction -> new Fraud(transaction, "Transaction above limit repeated within 24 hours"))
+        if (accumulator.isEmpty())
+            return Collections.emptyList();
+
+        List<Transaction> sortedTransactions = accumulator.stream()
+                .sorted(comparing(Transaction::getValue))
                 .collect(Collectors.toList());
+
+        int p05Index = (int) (sortedTransactions.size() * 0.05);
+        Transaction p05Transaction = sortedTransactions.get(p05Index);
+
+        if (p05Transaction.getValue().compareTo(minimalValue) < 0) {
+            return accumulator.stream()
+                    .filter(transaction -> transaction.getValue().compareTo(minimalValue) < 0)
+                    .map(transaction -> new Fraud(transaction, "5th percentile lower than " + minimalValue))
+                    .collect(Collectors.toList());
+        }
+
+        return Collections.emptyList();
     }
 
     @Override
