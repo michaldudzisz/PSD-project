@@ -139,9 +139,6 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
             boolean isFraud = false;
             double realVelocity = distance / timeBetween.toHours();
-            System.out.println("distance: " + distance);
-            System.out.println("timeBetween.toHours(): " + timeBetween.toHours());
-            System.out.println("realVelocity: " + realVelocity);
             if (distance < minimalAirplaneDistance) {
                 if (realVelocity > maxCarVelocity) isFraud = true;
             } else {
