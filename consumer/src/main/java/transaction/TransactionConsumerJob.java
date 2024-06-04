@@ -7,6 +7,7 @@ import transaction.dto.Fraud;
 import transaction.dto.Transaction;
 
 import static transaction.anomalydetectors.LowValuesDetector.lowValuesDetector;
+import static transaction.anomalydetectors.SuddenLocalizationChangeDetector.suddenLocalizationChangeDetector;
 import static transaction.anomalydetectors.ValueAboveLimitDetector.valueAboveLimitDetector;
 import static transaction.infrastructure.KafkaStreamSink.kafkaSink;
 import static transaction.infrastructure.KafkaStreamSource.getDataStream;
@@ -25,7 +26,7 @@ public class TransactionConsumerJob {
 
         valueAboveLimitDetector(dataStream)
                 .union(lowValuesDetector(dataStream))
-                .union(lowValuesDetector(dataStream))
+                .union(suddenLocalizationChangeDetector(dataStream))
                 .sinkTo(alarmKafkaSink);
 
         env.execute("Fraud detection alarm");

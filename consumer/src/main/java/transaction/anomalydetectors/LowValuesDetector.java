@@ -21,8 +21,8 @@ public class LowValuesDetector implements AggregateFunction<Transaction, List<Tr
 
     private static final BigDecimal minimalValue = BigDecimal.valueOf(1.0);
 
-    private static final Duration windowLength = Duration.ofHours(7 * 24);          // 7 days
-    private static final Duration windowSlide = Duration.ofHours((int) (3.5 * 24)); // 3.5 days
+    private static final Duration windowLength = Duration.ofHours(7 * 24); // 7 days
+    private static final Duration windowSlide =  Duration.ofHours(7 * 24); // Duration.ofHours((int) (3.5 * 24)); // 3.5 days
 
     public static DataStream<Fraud> lowValuesDetector(DataStream<Transaction> dataStream) {
         return dataStream.keyBy(Transaction::getCardId)

@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 public class ValueAboveLimitDetector implements AggregateFunction<Transaction, List<Transaction>, List<Fraud>> {
 
     private static final Duration windowLength = Duration.ofHours(24);
-    private static final Duration windowSlide = Duration.ofHours(12);
+    private static final Duration windowSlide = Duration.ofHours(24); // 12
     private static final int numberOfAllowedTransactionAboveLimitInWindow = 2;
 
 

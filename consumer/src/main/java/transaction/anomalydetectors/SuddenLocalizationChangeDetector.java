@@ -8,19 +8,21 @@ import org.apache.flink.util.Collector;
 import transaction.dto.Fraud;
 import transaction.dto.Transaction;
 
-import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import static java.util.Comparator.comparing;
 import static java.util.Comparator.comparingInt;
 import static transaction.anomalydetectors.SuddenLocalizationChangeDetector.LocalizationCentre;
 
 public class SuddenLocalizationChangeDetector implements AggregateFunction<Transaction, Map<LocalizationCentre, List<Transaction>>, List<Fraud>> {
 
-    private static final BigDecimal minimalValue = BigDecimal.valueOf(1.0);
     private static final long maximalCentreDistance = 100; // km
+    private static final long minimalAirplaneDistance = 300; // km
+    private static final long maxCarVelocity = 150; // 150 km/h
+    private static final long maxAirplaneVelocity = 900; // 150 km/h
+
 
     private static final Duration windowLength = Duration.ofDays(1);
     private static final Duration windowSlide = Duration.ofDays(1);
@@ -50,8 +52,20 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
         boolean added = false;
         for (LocalizationCentre centre : accumulator.keySet()) {
             double distanceFromCentre = DistanceCalculator.calculateDistance(centre.latitude, centre.longitude, latitude, longitude);
+            // if the transaction can belong to localization group, add it:
             if (distanceFromCentre < maximalCentreDistance) {
-                accumulator.get(centre).add(transaction);
+                // update localization centre as a mean of localizations in group:
+                List<Transaction> transactionsWithinCentre = accumulator.get(centre);
+                int groupSize = transactionsWithinCentre.size();
+                double updatedLatitude = centre.latitude * groupSize + latitude / (groupSize + 1);
+                double updatedLongitude = centre.longitude * groupSize + longitude / (groupSize + 1);
+                LocalizationCentre updatedCentre = new LocalizationCentre(updatedLatitude, updatedLongitude);
+
+                // update accumulator, add transaction to updated centre:
+                transactionsWithinCentre.add(transaction);
+                accumulator.remove(centre);
+                accumulator.put(updatedCentre, transactionsWithinCentre);
+
                 added = true;
                 break;
             }
@@ -59,7 +73,9 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
         // if there is not corresponding group, create a new one:
         if (!added) {
-            ArrayList<Transaction> trs = new ArrayList<Transaction>(){{ add(transaction); }};
+            ArrayList<Transaction> trs = new ArrayList<Transaction>() {{
+                add(transaction);
+            }};
             accumulator.put(new LocalizationCentre(latitude, longitude), trs);
         }
 
@@ -68,31 +84,81 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
     @Override
     public List<Fraud> getResult(Map<LocalizationCentre, List<Transaction>> accumulator) {
-        // Find group with most elements and consider it a base group:
-        Map.Entry<LocalizationCentre, List<Transaction>> biggestGroup = accumulator.entrySet().stream()
+        if (accumulator.isEmpty())
+            return Collections.emptyList();
+
+        // Find group with most elements and consider it a base group for user:
+        Map.Entry<LocalizationCentre, List<Transaction>> mainGroup = accumulator.entrySet().stream()
                 .sorted(comparingInt(entry -> entry.getValue().size()))
                 .reduce((first, second) -> second)
                 .orElse(null);
 
-        biggestGroup
+        // remove it from accumulator, save any other transactions as potential frauds:
+        accumulator.remove(mainGroup.getKey());
+        List<Transaction> potentialFrauds = accumulator
+                .values().stream()
+                .reduce((first, second) -> {
+                    first.addAll(second);
+                    return first;
+                })
+                .orElse(null);
 
-        if (accumulator.isEmpty())
+        if (potentialFrauds == null)
             return Collections.emptyList();
 
-        List<Transaction> sortedTransactions = accumulator.stream()
-                .sorted(comparing(Transaction::getValue))
+        // for every potential fraud, check if there is a transaction from main group that would require too much velocity:
+        List<Transaction> mainGroupTransactionsSortedByTime = mainGroup.getValue().stream()
+                .sorted(Comparator.comparing(Transaction::getTimestamp))
                 .collect(Collectors.toList());
 
-        int p05Index = (int) (sortedTransactions.size() * 0.05);
-        Transaction p05Transaction = sortedTransactions.get(p05Index);
+        mainGroup.setValue(mainGroupTransactionsSortedByTime);
 
-        if (p05Transaction.getValue().compareTo(minimalValue) < 0) {
-            return accumulator.stream()
-                    .filter(transaction -> transaction.getValue().compareTo(minimalValue) < 0)
-                    .map(transaction -> new Fraud(transaction, "5th percentile lower than " + minimalValue))
-                    .collect(Collectors.toList());
-        } else
-            return Collections.emptyList();
+        List<Fraud> frauds = new ArrayList<>();
+        for (Transaction potentialFraud : potentialFrauds) {
+            // Find the closest transaction from main group in sense of timestamp:
+            Transaction closestInTimeProperTransaction = mainGroupTransactionsSortedByTime.stream()
+                    .sorted(Comparator.comparingLong(o -> Math.abs(o.getTimestamp().until(potentialFraud.getTimestamp(), java.time.temporal.ChronoUnit.SECONDS))))
+                    .limit(1)
+                    .collect(Collectors.toList()).get(0);
+
+            double distance = DistanceCalculator.calculateDistance( // in km
+                    potentialFraud.localization.latitude,
+                    potentialFraud.localization.longitude,
+                    closestInTimeProperTransaction.localization.latitude,
+                    closestInTimeProperTransaction.localization.longitude
+            );
+
+            LocalDateTime properTime = closestInTimeProperTransaction.getTimestamp();
+            LocalDateTime potentialFraudTime = potentialFraud.getTimestamp();
+            Duration timeBetween;
+            if (properTime.isBefore(potentialFraudTime)) {
+                timeBetween = Duration.between(properTime, potentialFraudTime);
+            } else {
+                timeBetween = Duration.between(potentialFraudTime, properTime);
+            }
+
+            boolean isFraud = false;
+            double realVelocity = distance / timeBetween.toHours();
+            System.out.println("distance: " + distance);
+            System.out.println("timeBetween.toHours(): " + timeBetween.toHours());
+            System.out.println("realVelocity: " + realVelocity);
+            if (distance < minimalAirplaneDistance) {
+                if (realVelocity > maxCarVelocity) isFraud = true;
+            } else {
+                if (realVelocity > maxAirplaneVelocity) isFraud = true;
+            }
+
+            if (isFraud) {
+                frauds.add(new Fraud(potentialFraud,
+                        "Localization changed too fast. Computed velocity is " +
+                                String.format("%.2f", realVelocity) +
+                                " for distance " +
+                                String.format("%.2f", distance)
+                ));
+            }
+        }
+
+        return frauds;
     }
 
     @Override
@@ -100,7 +166,7 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
             Map<LocalizationCentre, List<Transaction>> a,
             Map<LocalizationCentre, List<Transaction>> b
     ) {
-        a.addAll(b);
+        a.putAll(b);
         return a;
     }
 
@@ -129,6 +195,7 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
     public static class DistanceCalculator {
         private static final double EARTH_RADIUS_KM = 6371.0;
+
         public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
             double dLat = Math.toRadians(lat2 - lat1);
             double dLon = Math.toRadians(lon2 - lon1);
