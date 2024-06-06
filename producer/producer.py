@@ -119,13 +119,12 @@ def generate_low_value_anomaly(cards, time, card_id: int):
     if randed < probability:
         transaction = generate_transaction(cards, card_id=card_id, time=time)
         transaction.value = round(uniform(0, 0.5), 2)
-        print(transaction.value)
         return transaction
     else:
         return None
 
 
-def generate_anomaly_localization(latitude, longitude, min_distance_km=100):
+def generate_anomaly_localization(latitude, longitude, min_distance_km=200):
     earth_radius_km = 6371.0
     min_distance_rad = min_distance_km / earth_radius_km
     bearing = uniform(0, 360)
@@ -146,7 +145,7 @@ def generate_anomaly_localization(latitude, longitude, min_distance_km=100):
 
 def generate_transaction_localization_change_anomaly(cards, time: datetime, user_id: int):
     randed = uniform(0, 1)
-    probability = probability_of_anomaly(counts_in_hour=0.2)
+    probability = probability_of_anomaly(counts_in_hour=0.5)
     if randed < probability:
         transaction = generate_transaction(cards, time, user_id=user_id)
         new_latitude, new_longitude = generate_anomaly_localization(transaction.latitude, transaction.longitude)
@@ -155,16 +154,6 @@ def generate_transaction_localization_change_anomaly(cards, time: datetime, user
         return transaction
     else:
         return None
-
-
-# def generate_anomalies(transaction):
-#     anomaly_type = choice(['high_value'])  # , 'localization_change'
-#     if anomaly_type == 'high_value':
-#         transaction.value = uniform(transaction.limit, transaction.limit + 100)
-#     elif anomaly_type == 'localization_change':
-#         transaction.latitude = transaction.latitude + uniform(1,
-#                                                               50)  # teraz bierzemy tylko większe szerokości, ale (-1,1) może dać nam 0 czyli okej wartość, więc trzeba przemyśleć
-#         transaction.longitude = transaction.longitude + uniform(1, 50)
 
 
 def time_str(str: str) -> datetime:
@@ -180,7 +169,6 @@ def generate_transaction(cards, time: datetime, user_id: int = None, card_id: in
         for card_id, card_info in cards.items():
             if card_info['user_id'] == user_id:
                 user_cards.append(card_id)
-        print("user_cards: " + str(user_cards))
         card_id = choice(user_cards)
 
     if card_id is not None:
@@ -209,15 +197,22 @@ def generate_transaction(cards, time: datetime, user_id: int = None, card_id: in
 LOOP_VIRTUAL_INTERVAL = 3  # one main loop cycle every 3 virtual seconds
 
 if __name__ == '__main__':
-    # producer = kafka_producer()
-    # topic = 'Transactions'
+    producer = kafka_producer()
+    topic = 'Transactions'
     start_datetime = time_str("2024-06-01 08:00:00")
     time_provider = FastForwardTime(start_time=start_datetime)
     # users = generate_users()
     cards = generate_cards()
     now = time_provider.get_current_time()
-    while now < time_str("2024-06-06 16:00:00"):
+    last_date = now.date()
+    print("Started day " + str(last_date))
+    while now < time_str("2024-06-14 16:00:00"):
         now = time_provider.get_current_time()
+
+        if last_date < now.date():
+            last_date = now.date()
+            print("Started day " + str(last_date))
+
         transaction = generate_transaction(cards, time=now)
         anomalies = []
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
@@ -225,21 +220,21 @@ if __name__ == '__main__':
             if anomaly:
                 print(f'Above limit anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
-        if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
+        if time_str("2024-06-02 12:00:00") <= now <= time_str("2024-06-07 12:00:00"):
             anomaly = generate_low_value_anomaly(cards=cards, time=now, card_id=101)
             anomalies.append(anomaly)
-        if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
+        if time_str("2024-06-02 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_transaction_localization_change_anomaly(cards=cards, time=now, user_id=102)
             if anomaly:
                 print(f'Localization change anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
         anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
         transactions = [transaction] + anomalies
-        # for transaction in transactions:
-        #     print(f'transaction: {transaction.json()}')
-            # producer.send(topic, value=transaction.json(), timestamp_ms=int(now.timestamp()))
+        for transaction in transactions:
+            # print(f'transaction: {transaction.json()}')
+            producer.send(topic, value=transaction.json(), timestamp_ms=int(now.timestamp() * 1000))
         time_provider.tick_by(LOOP_VIRTUAL_INTERVAL)
 
-    # producer.flush()
-    # producer.close()
+    producer.flush()
+    producer.close()
 

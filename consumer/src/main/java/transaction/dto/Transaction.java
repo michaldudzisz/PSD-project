@@ -1,6 +1,4 @@
-package temperature;
-
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+package transaction.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
