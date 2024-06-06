@@ -52,14 +52,19 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
         boolean added = false;
         for (LocalizationCentre centre : accumulator.keySet()) {
             double distanceFromCentre = DistanceCalculator.calculateDistance(centre.latitude, centre.longitude, latitude, longitude);
+//            System.out.println("distanceFromCentre: " + distanceFromCentre);
             // if the transaction can belong to localization group, add it:
             if (distanceFromCentre < maximalCentreDistance) {
+//                System.out.println("Adding");
                 // update localization centre as a mean of localizations in group:
                 List<Transaction> transactionsWithinCentre = accumulator.get(centre);
                 int groupSize = transactionsWithinCentre.size();
-                double updatedLatitude = centre.latitude * groupSize + latitude / (groupSize + 1);
-                double updatedLongitude = centre.longitude * groupSize + longitude / (groupSize + 1);
+                double updatedLatitude = (centre.latitude * groupSize + latitude) / (groupSize + 1);
+                double updatedLongitude = (centre.longitude * groupSize + longitude) / (groupSize + 1);
                 LocalizationCentre updatedCentre = new LocalizationCentre(updatedLatitude, updatedLongitude);
+
+//                System.out.println("In Adding: previousCentre: " + centre);
+//                System.out.println("In Adding: newCentre: " + updatedCentre);
 
                 // update accumulator, add transaction to updated centre:
                 transactionsWithinCentre.add(transaction);
@@ -73,10 +78,13 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
         // if there is not corresponding group, create a new one:
         if (!added) {
+//            System.out.println("Not adding");
             ArrayList<Transaction> trs = new ArrayList<Transaction>() {{
                 add(transaction);
             }};
-            accumulator.put(new LocalizationCentre(latitude, longitude), trs);
+            LocalizationCentre newLocalizationCentre = new LocalizationCentre(latitude, longitude);
+            accumulator.put(newLocalizationCentre, trs);
+//            System.out.println("newLocalizationCentre: " + newLocalizationCentre);
         }
 
         return accumulator;
@@ -89,10 +97,10 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
         // Find group with most elements and consider it a base group for user:
         Map.Entry<LocalizationCentre, List<Transaction>> mainGroup = accumulator.entrySet().stream()
-                .sorted(comparingInt(entry -> entry.getValue().size()))
-                .reduce((first, second) -> second)
+                .max(Comparator.comparingInt(entry -> entry.getValue().size()))
                 .orElse(null);
 
+//        System.out.println("mainGroup.getValue().size(): " + mainGroup.getValue().size());
         // remove it from accumulator, save any other transactions as potential frauds:
         accumulator.remove(mainGroup.getKey());
         List<Transaction> potentialFrauds = accumulator
@@ -113,6 +121,9 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
         mainGroup.setValue(mainGroupTransactionsSortedByTime);
 
+//        System.out.println("mainGroupTransactionsSortedByTime.size(): " + mainGroupTransactionsSortedByTime.size());
+//        System.out.println("potentialFrauds.size(): " + potentialFrauds.size());
+
         List<Fraud> frauds = new ArrayList<>();
         for (Transaction potentialFraud : potentialFrauds) {
             // Find the closest transaction from main group in sense of timestamp:
@@ -128,6 +139,11 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
                     closestInTimeProperTransaction.localization.longitude
             );
 
+            // if the distance is small enough, continue. There may be localization errors in small distances.
+//            System.out.println("distance: " + distance);
+//            if (distance < maximalCentreDistance)
+//                continue;
+
             LocalDateTime properTime = closestInTimeProperTransaction.getTimestamp();
             LocalDateTime potentialFraudTime = potentialFraud.getTimestamp();
             Duration timeBetween;
@@ -137,8 +153,10 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
                 timeBetween = Duration.between(potentialFraudTime, properTime);
             }
 
+            double timeBetweenHours = ((double) timeBetween.toMillis()) / (1000 * 60 * 60);
+
             boolean isFraud = false;
-            double realVelocity = distance / timeBetween.toHours();
+            double realVelocity = distance / timeBetweenHours;
             if (distance < minimalAirplaneDistance) {
                 if (realVelocity > maxCarVelocity) isFraud = true;
             } else {
@@ -147,10 +165,16 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
             if (isFraud) {
                 frauds.add(new Fraud(potentialFraud,
-                        "Localization changed too fast. Computed velocity is " +
+                        "Localization changed too fast. Time between is " +
+                                String.format("%.2f", timeBetweenHours) +
+                                "hours. Computed velocity is: " +
                                 String.format("%.2f", realVelocity) +
                                 " for distance " +
-                                String.format("%.2f", distance)
+                                String.format("%.2f", distance) +
+                                ". One transaction timestamp is " +
+                                properTime +
+                                " the second is " +
+                                potentialFraudTime
                 ));
             }
         }
@@ -187,6 +211,14 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
         @Override
         public int hashCode() {
             return Objects.hash(latitude, longitude);
+        }
+
+        @Override
+        public String toString() {
+            return "LocalizationCentre{" +
+                    "latitude=" + latitude +
+                    ", longitude=" + longitude +
+                    '}';
         }
     }
 

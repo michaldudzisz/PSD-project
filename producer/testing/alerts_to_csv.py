@@ -4,7 +4,7 @@ import pandas as pd
 
 
 def prepare_file(csv_file):
-    header = "transaction.cardId,transaction.timestamp,transaction.value,transaction.userId,transaction.limit,transaction.localization.latitude,transaction.localization.longitude,fraudReason"
+    header = "transaction.cardId,transaction.timestamp,transaction.value,transaction.userId,transaction.limit,transaction.localization.latitude,transaction.localization.longitude,isAboveLimit,fraudReason"
     with open(csv_file, 'w') as f:
         f.write(header + '\n')
 

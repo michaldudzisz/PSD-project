@@ -1,25 +1,32 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import re
 
 
-file_path = 'transactions.csv'
+file_path = 'frauds.csv'
 data = pd.read_csv(file_path)
 
-data['timestamp'] = pd.to_datetime(data['timestamp']).apply(lambda x: x.timestamp() / (24 * 60 * 60))
+# get desired fraud type only
+pattern = r"Localization changed too fast.*"
+data = data[data["fraudReason"].str.contains(pattern, regex=True)]
+
+print(data.head)
+
+data['transaction.timestamp'] = pd.to_datetime(data['transaction.timestamp']).apply(lambda x: x.timestamp() / (24 * 60 * 60))
 
 card_id = 7102
 
-card_data = data[data['cardId'] == card_id]
+card_data = data[data['transaction.cardId'] == card_id]
 
-print(type(card_data['timestamp'].iloc[0]))
+print(type(card_data['transaction.timestamp'].iloc[0]))
 
 if card_data.empty:
     print(f"No data available for cardId={card_id}")
 else:
     fig, ax = plt.subplots(1, 1, figsize=(10, 5))
-    sc = ax.scatter(card_data['localization.longitude'], card_data['localization.latitude'],
-                    c=card_data['timestamp'], cmap='viridis')
+    sc = ax.scatter(card_data['transaction.localization.longitude'], card_data['transaction.localization.latitude'],
+                    c=card_data['transaction.timestamp'], cmap='viridis')
 
     # sc = ax.scatter(card_data['localization.longitude'], card_data['localization.latitude'],
     #                 c=card_data['timestamp'].apply(lambda x: x.timestamp()), cmap='viridis')

@@ -54,13 +54,21 @@ def generate_cards():
     # 10 000 elements, at first from 1 to 7000, then from 1 to 3000:
     user_ids = iter(list(range(1, 7_001)) + list(range(1, 3_001)))
     cards = {}
+    user_localizations = generate_user_localizations(num_users=7000)
     for card_id in card_ids:
         user_id = next(user_ids)
         limit = randint(500, 2001)
-        latitude, longitude = generate_original_localization()
+        latitude, longitude = user_localizations[user_id-1]
         cards[card_id] = {"user_id": user_id, "limit": limit, "latitude": latitude, "longitude": longitude}
     return cards
 
+
+def generate_user_localizations(num_users):
+    localizations = []
+    for i in range(1, num_users+1):
+        latitude, longitude = generate_original_localization()
+        localizations.append((latitude, longitude))
+    return localizations
 
 def generate_original_localization():
     latitude = uniform(-90, 90)
@@ -68,7 +76,7 @@ def generate_original_localization():
     return latitude, longitude
 
 
-def generate_nearby_localization(latitude, longitude, max_distance_km = 15):
+def generate_nearby_localization(latitude, longitude, max_distance_km = 20):
     earth_radius_km = 6371.0
     max_distance_rad = max_distance_km / earth_radius_km
 
@@ -206,7 +214,7 @@ if __name__ == '__main__':
     now = time_provider.get_current_time()
     last_date = now.date()
     print("Started day " + str(last_date))
-    while now < time_str("2024-06-14 16:00:00"):
+    while now < time_str("2024-06-06 16:00:00"):
         now = time_provider.get_current_time()
 
         if last_date < now.date():
@@ -217,16 +225,16 @@ if __name__ == '__main__':
         anomalies = []
         if time_str("2024-06-04 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_transaction_above_limit_anomaly(cards=cards, time=now, user_id=100)
-            if anomaly:
-                print(f'Above limit anomaly generated: {anomaly.json()}')
+            # if anomaly:
+            #     print(f'Above limit anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
         if time_str("2024-06-02 12:00:00") <= now <= time_str("2024-06-07 12:00:00"):
             anomaly = generate_low_value_anomaly(cards=cards, time=now, card_id=101)
             anomalies.append(anomaly)
         if time_str("2024-06-02 12:00:00") <= now <= time_str("2024-06-06 12:00:00"):
             anomaly = generate_transaction_localization_change_anomaly(cards=cards, time=now, user_id=102)
-            if anomaly:
-                print(f'Localization change anomaly generated: {anomaly.json()}')
+            # if anomaly:
+            #     print(f'Localization change anomaly generated: {anomaly.json()}')
             anomalies.append(anomaly)
         anomalies = list(filter(lambda anomaly: anomaly is not None, anomalies))
         transactions = [transaction] + anomalies
