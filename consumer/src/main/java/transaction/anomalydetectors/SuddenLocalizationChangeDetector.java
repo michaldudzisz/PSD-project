@@ -100,7 +100,6 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
                 .max(Comparator.comparingInt(entry -> entry.getValue().size()))
                 .orElse(null);
 
-//        System.out.println("mainGroup.getValue().size(): " + mainGroup.getValue().size());
         // remove it from accumulator, save any other transactions as potential frauds:
         accumulator.remove(mainGroup.getKey());
         List<Transaction> potentialFrauds = accumulator
@@ -121,9 +120,6 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
 
         mainGroup.setValue(mainGroupTransactionsSortedByTime);
 
-//        System.out.println("mainGroupTransactionsSortedByTime.size(): " + mainGroupTransactionsSortedByTime.size());
-//        System.out.println("potentialFrauds.size(): " + potentialFrauds.size());
-
         List<Fraud> frauds = new ArrayList<>();
         for (Transaction potentialFraud : potentialFrauds) {
             // Find the closest transaction from main group in sense of timestamp:
@@ -138,11 +134,6 @@ public class SuddenLocalizationChangeDetector implements AggregateFunction<Trans
                     closestInTimeProperTransaction.localization.latitude,
                     closestInTimeProperTransaction.localization.longitude
             );
-
-            // if the distance is small enough, continue. There may be localization errors in small distances.
-//            System.out.println("distance: " + distance);
-//            if (distance < maximalCentreDistance)
-//                continue;
 
             LocalDateTime properTime = closestInTimeProperTransaction.getTimestamp();
             LocalDateTime potentialFraudTime = potentialFraud.getTimestamp();
