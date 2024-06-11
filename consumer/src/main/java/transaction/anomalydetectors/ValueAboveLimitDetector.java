@@ -18,7 +18,7 @@ public class ValueAboveLimitDetector implements AggregateFunction<Transaction, L
 
     private static final Duration windowLength = Duration.ofHours(24);
     private static final Duration windowSlide = Duration.ofHours(24); // 12
-    private static final int numberOfAllowedTransactionAboveLimitInWindow = 2;
+    private static final int numberOfAllowedTransactionAboveLimitInWindow = 1;
 
 
     public static DataStream<Fraud> valueAboveLimitDetector(DataStream<Transaction> dataStream) {
